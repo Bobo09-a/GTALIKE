@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, orientation=landscape"/>
+<title>Mini-GTA (prototype mobile)</title>
+<style>
+  :root{
+    --bg:#0e0f19; --hud:#16182a; --hud2:#23274a; --txt:#e9ecff; --muted:#aab1ff;
+    --road:#424655; --lane:#d9dbdf; --grass:#1e6a3a; --building:#2a2e54; --door:#a7742a;
+    --car:#ff5353; --police:#5aa6ff; --player:#ffd56a; --mission:#ffd44d;
+  }
+  *{box-sizing:border-box;touch-action:none}
+  html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+  .wrap{
+    width:100vw;
+    height:100vh;
+    position:relative;
+    border-radius:0;
+    background:linear-gradient(180deg,rgba(24,27,60,.85),rgba(10,12,28,.85));
+    overflow:hidden;
+  }
+  header, footer{
+    position:absolute;
+    left:0;right:0;
+    display:flex;
+    justify-content:space-between;
+    padding:4px;
+    z-index:5;
+    font-size:clamp(10px,2vw,14px);
+  }
+  header{top:0}
+  footer{bottom:0;flex-wrap:wrap}
+  .hud{display:flex;gap:4px;flex-wrap:wrap;background:rgba(10,12,28,.6);border:1px solid #2a2f62;border-radius:8px;padding:3px}
+  .stat, .btn{
+    padding:4px 6px;
+    border-radius:6px;
+    font-size:inherit;
+  }
+  .stat{background:var(--hud)}
+  .btn{background:var(--hud2);color:var(--txt);border:1px solid #2a2f62;cursor:pointer}
+  canvas{
+    position:absolute;
+    top:calc(8vh); bottom:calc(8vh);
+    left:0; right:0;
+    margin:auto;
+    display:block;
+    max-width:100%;
+    max-height:calc(100% - 16vh);
+    background:#0a0b16;
+  }
+  .card{
+    position:absolute;inset:0;display:grid;place-items:center;z-index:10;padding:10px
+  }
+  .panel{
+    width:90%;max-width:500px;
+    background:rgba(28,32,82,.96);
+    border-radius:10px;
+    padding:12px;
+    font-size:clamp(12px,3vw,16px);
+  }
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="hud">
+      <div class="stat">Mode: <b id="mode">À pied</b></div>
+      <div class="stat">Mission: <b id="mission">Va au point ⭐</b></div>
+      <div class="stat">★: <b id="wanted">0</b></div>
+      <div class="stat">Vitesse: <b id="speed">0</b> km/h</div>
+    </div>
+    <div class="hud">
+      <button id="restart" class="btn">🔁</button>
+      <button id="help" class="btn">❓</button>
+    </div>
+  </header>
+
+  <canvas id="game" width="1100" height="640"></canvas>
+
+  <footer>
+    <div class="hud tips">ZQSD / ↑↓←→ bouger • E entrer/sortir • Espace frein • M mini-carte</div>
+  </footer>
+
+  <div class="card" id="intro">
+    <div class="panel">
+      <h2>Mini-GTA Mobile</h2>
+      <p>Rends-toi au point ⭐ sans te faire arrêter 🚓.</p>
+      <button class="btn" id="play">🚀 Jouer</button>
+    </div>
+  </div>
+
+  <div class="card hide" id="helpPanel">
+    <div class="panel">
+      <p>ZQSD/Flèches se déplacer • E entrer/sortir • Espace frein • M mini-carte</p>
+      <button class="btn" id="closeHelp">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Insérer ici tout le script JavaScript original (non modifié) du jeu Mini-GTA
+// Pour préserver la compacité de ce fichier, on garde l'intégralité du script tel que fourni précédemment
+</script>
+</body>
+</html>

@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mini‑GTA (prototype)</title>
+<style>
+  :root{
+    --bg:#0e0f19; --hud:#16182a; --hud2:#23274a; --txt:#e9ecff; --muted:#aab1ff;
+    --road:#424655; --lane:#d9dbdf; --grass:#1e6a3a; --building:#2a2e54; --door:#a7742a;
+    --car:#ff5353; --police:#5aa6ff; --player:#ffd56a; --mission:#ffd44d;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(900px 600px at 70% -10%,#1b1f3f 0,#0e0f19 60%);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center}
+  .wrap{width:min(1100px,96vw);height:min(700px,92vh);position:relative;border:1px solid #29305f;border-radius:16px;background:linear-gradient(180deg,rgba(24,27,60,.85),rgba(10,12,28,.85));overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  header{position:absolute;inset:12px 12px auto 12px;z-index:3;display:flex;gap:10px;align-items:center;justify-content:space-between}
+  .hud{display:flex;gap:8px;padding:6px;border-radius:12px;background:rgba(10,12,28,.6);border:1px solid #2a2f62}
+  .stat{padding:.35rem .6rem;border-radius:10px;background:var(--hud);border:1px solid #2a2f62;font-variant-numeric:tabular-nums}
+  .btn{appearance:none;border:1px solid #2a2f62;background:var(--hud2);color:var(--txt);border-radius:10px;padding:.55rem .8rem;cursor:pointer}
+  canvas{position:absolute;inset:60px 0 0 0;display:block;width:100%;height:calc(100% - 60px);background:#0a0b16}
+  .card{position:absolute;inset:0;display:grid;place-items:center;z-index:4}
+  .panel{width:min(560px,92%);background:linear-gradient(180deg,rgba(28,32,82,.96),rgba(14,16,36,.96));border:1px solid #2a2f62;border-radius:14px;padding:18px;box-shadow:0 0 24px rgba(90,166,255,.25)}
+  .panel h2{margin:.2rem 0 .4rem}
+  .tips{color:var(--muted);line-height:1.5}
+  .hide{display:none}
+  footer{position:absolute;inset:auto 12px 12px 12px;display:flex;align-items:center;justify-content:space-between;z-index:2}
+</style>
+</head>
+<body>
+<div class="wrap" role="application" aria-label="Jeu d'aventure top‑down">
+  <header>
+    <div class="hud">
+      <div class="stat">Mode: <b id="mode">À pied</b></div>
+      <div class="stat">Mission: <b id="mission">Va au point ⭐</b></div>
+      <div class="stat">Recherche: <b id="wanted">0</b> ★</div>
+      <div class="stat">Vitesse: <b id="speed">0</b> km/h</div>
+    </div>
+    <div class="hud">
+      <button id="restart" class="btn">🔁 Recommencer</button>
+      <button id="help" class="btn">❓ Aide</button>
+    </div>
+  </header>
+
+  <canvas id="game" width="1100" height="640" aria-label="Zone de jeu"></canvas>
+
+  <footer>
+    <div class="hud tips">
+      ZQSD / ↑↓←→ pour bouger • E pour entrer/sortir du véhicule • Espace pour frein à main • M pour mini‑carte
+    </div>
+  </footer>
+
+  <div class="card" id="intro">
+    <div class="panel">
+      <h2>Mini‑GTA (prototype)</h2>
+      <p class="tips">Traverse la mini‑ville, monte dans la voiture 🚗 (touche <b>E</b>), rends‑toi au point <b>⭐</b> pour terminer la mission sans te faire arrêter 🚓.</p>
+      <ul class="tips">
+        <li>À pied : ZQSD/Flèches pour bouger</li>
+        <li>Véhicule : mêmes touches pour conduire, <b>Espace</b> = frein à main</li>
+        <li><b>E</b> : entrer/sortir si tu es proche de la voiture</li>
+      </ul>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:.5rem">
+        <button class="btn" id="play">🚀 Jouer</button>
+        <button class="btn" id="seeHelp">📜 Rappeler les touches</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hide" id="helpPanel">
+    <div class="panel">
+      <h2>Commandes</h2>
+      <p class="tips">ZQSD/Flèches se déplacer • E entrer/sortir du véhicule • Espace frein • M mini‑carte. Évite la police si tu augmentes les ★.</p>
+      <div style="text-align:center;margin-top:.4rem"><button class="btn" id="closeHelp">OK</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // --- Canvas & scaling ---
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+
+  // Fit to container
+  function fit() {
+    const rect = cvs.parentElement.getBoundingClientRect();
+    const w = rect.width, h = rect.height - 60;
+    const ratio = 1100/640;
+    let cw = w, ch = cw/ratio;
+    if (ch > h) { ch = h; cw = ch*ratio; }
+    cvs.style.width = cw+'px'; cvs.style.height = ch+'px';
+  }
+  addEventListener('resize', fit); fit();
+
+  // --- UI elements ---
+  const elMode = document.getElementById('mode');
+  const elMission = document.getElementById('mission');
+  const elWanted = document.getElementById('wanted');
+  const elSpeed = document.getElementById('speed');
+  const intro = document.getElementById('intro');
+  const helpPanel = document.getElementById('helpPanel');
+  document.getElementById('play').onclick = ()=> intro.classList.add('hide');
+  document.getElementById('seeHelp').onclick = ()=> { intro.classList.add('hide'); helpPanel.classList.remove('hide'); };
+  document.getElementById('help').onclick = ()=> helpPanel.classList.remove('hide');
+  document.getElementById('closeHelp').onclick = ()=> helpPanel.classList.add('hide');
+  document.getElementById('restart').onclick = ()=> location.reload();
+
+  // --- Input ---
+  const keys = new Set();
+  addEventListener('keydown', e=>{ keys.add(e.key.toLowerCase()); if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault(); });
+  addEventListener('keyup', e=> keys.delete(e.key.toLowerCase()));
+  const key = k => keys.has(k) || keys.has({'z':'w','q':'a','s':'s','d':'d'}[k]||'_'); // ZQSD & WASD
+
+  // --- World definition (grid) ---
+  // 0 grass, 1 road, 2 building
+  const W=1100, H=640, TS=40; // tile size 40px
+  const cols = Math.floor(W/TS), rows = Math.floor(H/TS);
+  const map = Array.from({length:rows}, (_,y)=>Array.from({length:cols},(_,x)=>{
+    // simple city: horizontal/vertical roads plus blocks
+    if (y===4||y===10||y===15) return 1;
+    if (x===6||x===13||x===20) return 1;
+    // buildings inside blocks
+    if ((x>1&&x<5 && y>1&&y<7) || (x>7&&x<12 && y>1&&y<6) ||
+        (x>14&&x<19 && y>1&&y<6) || (x>1&&x<5 && y>8&&y<13) ||
+        (x>7&&x<12 && y>8&&y<13) || (x>14&&x<19 && y>8&&y<13) ||
+        (x>1&&x<5 && y>14&&y<19) || (x>7&&x<12 && y>14&&y<19) ||
+        (x>14&&x<19 && y>14&&y<19)) return 2;
+    return 0;
+  }));
+
+  // Mission target (star) on road
+  const mission = { x: TS*19.5, y: TS*4.5, r: 16, done:false };
+
+  // Entities
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function dist(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return Math.hypot(dx,dy); }
+  function tileAt(x,y){ const tx=Math.floor(x/TS), ty=Math.floor(y/TS); return (map[ty]||[])[tx]??0; }
+  function onRoad(x,y){ return tileAt(x,y)===1; }
+  function collidesWithBuilding(x,y){ return tileAt(x,y)===2; }
+
+  // Player
+  const player = {
+    x: TS*5.5, y: TS*4.5, r: 10, angle: 0, onFoot: true, speed:0, maxSpeed: 2.4,
+  };
+
+  // Car (owned)
+  const car = {
+    x: TS*8.5, y: TS*10.5, w: 28, h: 16, angle: 0, speed:0, maxSpeed: 4.2, accel:.18, friction:.06,
+    color: getComputedStyle(document.documentElement).getPropertyValue('--car') || '#ff5353'
+  };
+
+  // Police car (AI)
+  const police = {
+    x: TS*20.5, y: TS*10.5, w: 30, h: 18, angle: 0, speed:0, maxSpeed: 4.0, accel:.16, friction:.06,
+    active:false, cooldown:0
+  };
+
+  let wanted=0, showMinimap=false;
+
+  // --- NPC pedestrians as moving dots on sidewalks (grass lanes) ---
+  const npcs = Array.from({length: 16}).map((_,i)=>({
+    x: TS*(2+Math.random()*16), y: TS*(2+Math.random()*16),
+    r: 6, vx: (Math.random()*2-1)*0.6, vy:(Math.random()*2-1)*0.6
+  }));
+
+  // --- Game loop ---
+  let last = performance.now();
+  function loop(now){
+    const dt = Math.min(32, now-last); last = now;
+    update(dt/16.666); // normalize to ~60fps units
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // --- Update ---
+  function update(dt){
+    // Toggle minimap
+    if(keys.has('m')) { showMinimap = true; } else { showMinimap = false; }
+
+    // Enter/exit car
+    if(keys.has('e')){
+      // debounce simplistic
+      keys.delete('e');
+      if (player.onFoot && dist(player.x,player.y,car.x,car.y) < 32) {
+        player.onFoot = false; elMode.textContent='Véhicule';
+      } else if (!player.onFoot) {
+        player.onFoot = true; elMode.textContent='À pied';
+        // place player near car
+        player.x = car.x + Math.cos(car.angle+Math.PI/2)*18;
+        player.y = car.y + Math.sin(car.angle+Math.PI/2)*18;
+        player.speed = 0;
+      }
+    }
+
+    // Movement
+    if (player.onFoot){
+      const spd = 2.2;
+      let dx=0, dy=0;
+      if (key('z')||keys.has('arrowup')) dy-=spd;
+      if (key('s')||keys.has('arrowdown')) dy+=spd;
+      if (key('q')||keys.has('arrowleft')) dx-=spd;
+      if (key('d')||keys.has('arrowright')) dx+=spd;
+      const len = Math.hypot(dx,dy)||1; dx/=len; dy/=len;
+      player.x = clamp(player.x + dx*spd*dt, 8, W-8);
+      player.y = clamp(player.y + dy*spd*dt, 8, H-8);
+      // collision with buildings: push back (simple)
+      if (collidesWithBuilding(player.x, player.y)){
+        player.x -= dx*spd*dt; player.y -= dy*spd*dt;
+      }
+      elSpeed.textContent = '0';
+    } else {
+      // Driving
+      const steerLeft = key('q')||keys.has('arrowleft');
+      const steerRight = key('d')||keys.has('arrowright');
+      const accelerate = key('z')||keys.has('arrowup');
+      const brake = key('s')||keys.has('arrowdown');
+      const handbrake = keys.has(' ');
+      // accel/brake
+      if (accelerate) car.speed = Math.min(car.maxSpeed, car.speed + car.accel*dt);
+      else if (brake) car.speed = Math.max(-car.maxSpeed*.5, car.speed - car.accel*dt);
+      else car.speed += (0 - car.speed) * car.friction*dt;
+
+      // steer more when moving
+      const turn = (steerLeft?-1:0) + (steerRight?1:0);
+      car.angle += turn * 0.045 * dt * (handbrake?1.6:1) * (car.speed? (car.speed/car.maxSpeed+0.3):0);
+
+      // move
+      const vx = Math.cos(car.angle) * car.speed;
+      const vy = Math.sin(car.angle) * car.speed;
+      car.x = clamp(car.x + vx*dt, 20, W-20);
+      car.y = clamp(car.y + vy*dt, 20, H-20);
+
+      // off-road penalty: slower on grass
+      if (!onRoad(car.x, car.y)) car.speed = Math.max(-.3, Math.min(car.speed, car.maxSpeed*.55));
+
+      // collision with buildings -> bounce
+      if (collidesWithBuilding(car.x,car.y)) { car.x -= vx*dt; car.y -= vy*dt; car.speed *= -0.3; wanted = Math.min(5, wanted+1); }
+
+      elSpeed.textContent = Math.max(0, Math.round(Math.abs(car.speed)*22));
+    }
+
+    // NPCs wander, avoid buildings
+    npcs.forEach(n=>{
+      n.x += n.vx*dt; n.y += n.vy*dt;
+      // bounce on borders/buildings
+      if (n.x<8||n.x>W-8) n.vx*=-1;
+      if (n.y<8||n.y>H-8) n.vy*=-1;
+      if (collidesWithBuilding(n.x, n.y)) { n.vx*=-1; n.vy*=-1; }
+      // hit by car?
+      if (!player.onFoot && dist(n.x,n.y,car.x,car.y) < 16){
+        // “accident” → wanted up + knock back
+        wanted = Math.min(5, wanted+1);
+        n.vx = (n.x - car.x)*0.08; n.vy=(n.y - car.y)*0.08;
+      }
+    });
+
+    // Police AI: activated when wanted>0
+    if (wanted>0 && !police.active){ police.active=true; }
+    if (police.active){
+      // chase the player (onFoot) or the car (in vehicle)
+      const tx = player.onFoot ? player.x : car.x;
+      const ty = player.onFoot ? player.y : car.y;
+      const ang = Math.atan2(ty-police.y, tx-police.x);
+      police.angle += (ang - police.angle) * 0.08*dt;
+      police.speed = Math.min(police.maxSpeed, police.speed + police.accel*dt);
+      police.x += Math.cos(police.angle)*police.speed*dt;
+      police.y += Math.sin(police.angle)*police.speed*dt;
+      // collide with buildings
+      if (collidesWithBuilding(police.x,police.y)){ police.speed*=-.3; }
+      // catch player
+      const catchDist = player.onFoot? 16 : 24;
+      if (dist(police.x,police.y, tx,ty) < catchDist){
+        // arrested: reset wanted, respawn police
+        wanted = 0; police.active=false; police.x = TS*20.5; police.y = TS*10.5; police.speed=0;
+        // simple penalty: move player at spawn
+        if (player.onFoot){ player.x = TS*5.5; player.y=TS*4.5; }
+        else { car.x = TS*8.5; car.y = TS*10.5; car.speed=0; player.onFoot=false; }
+      }
+      // natural decay
+      police.cooldown += dt;
+      if (police.cooldown>600 && wanted>0){ wanted--; police.cooldown=0; if (wanted===0) police.active=false; }
+    }
+
+    // Mission check
+    const px = player.onFoot? player.x : car.x;
+    const py = player.onFoot? player.y : car.y;
+    if (!mission.done && dist(px,py, mission.x, mission.y) < 22){
+      mission.done = true;
+      elMission.textContent = 'Terminé ✅';
+    }
+
+    // HUD
+    elWanted.textContent = wanted;
+    elMode.textContent = player.onFoot ? 'À pied' : 'Véhicule';
+  }
+
+  // --- Render ---
+  function render(){
+    // background
+    ctx.clearRect(0,0,W,H);
+
+    // draw tiles
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        const t = map[y][x];
+        if (t===0){ ctx.fillStyle=getCSS('--grass'); }
+        else if (t===1){ ctx.fillStyle=getCSS('--road'); }
+        else { ctx.fillStyle=getCSS('--building'); }
+        ctx.fillRect(x*TS,y*TS,TS,TS);
+
+        // road lane lines
+        if (t===1){
+          ctx.strokeStyle = getCSS('--lane');
+          ctx.lineWidth = 2;
+          // vertical lanes
+          if ((x===6||x===13||x===20)) {
+            ctx.beginPath(); ctx.moveTo(x*TS+TS/2, y*TS+6); ctx.lineTo(x*TS+TS/2, y*TS+TS-6); ctx.stroke();
+          }
+          // horizontal lanes
+          if ((y===4||y===10||y===15)) {
+            ctx.beginPath(); ctx.moveTo(x*TS+6, y*TS+TS/2); ctx.lineTo(x*TS+TS-6, y*TS+TS/2); ctx.stroke();
+          }
+        }
+
+        // building doors
+        if (t===2 && (x%3===0) && (y%3===0)){
+          ctx.fillStyle=getCSS('--door');
+          ctx.fillRect(x*TS+TS/2-4, y*TS+TS-10, 8, 8);
+        }
+      }
+    }
+
+    // mission star
+    if (!mission.done){
+      drawStar(mission.x, mission.y, 5, 16, 7, getCSS('--mission'));
+    }
+
+    // NPCs
+    npcs.forEach(n=>{
+      ctx.fillStyle = '#e6f2ff';
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
+    });
+
+    // car
+    drawCar(car.x,car.y, car.w,car.h, car.angle, getCSS('--car'));
+
+    // police
+    if (police.active){
+      drawCar(police.x,police.y,police.w,police.h,police.angle, getCSS('--police'), true);
+    }
+
+    // player
+    if (player.onFoot){
+      ctx.fillStyle=getCSS('--player');
+      ctx.beginPath(); ctx.arc(player.x,player.y,player.r,0,Math.PI*2); ctx.fill();
+      // facing direction (nose)
+      ctx.strokeStyle='#000'; ctx.lineWidth=2;
+      const nx = player.x + Math.cos(player.angle)*10;
+      const ny = player.y + Math.sin(player.angle)*10;
+      ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(nx,ny); ctx.stroke();
+    }
+
+    // minimap
+    if (showMinimap){
+      const scale=0.18, mw=W*scale, mh=H*scale;
+      ctx.globalAlpha=.85;
+      ctx.fillStyle='rgba(20,24,48,.9)'; ctx.fillRect(W-mw-10,10,mw,mh);
+      ctx.globalAlpha=1;
+      // draw simple map blocks
+      for (let y=0;y<rows;y++){
+        for (let x=0;x<cols;x++){
+          const t=map[y][x];
+          ctx.fillStyle = t===1?'#d8dde8': t===2?'#5a5ea0':'#2e8651';
+          ctx.fillRect(W-mw-10 + x*TS*scale, 10 + y*TS*scale, TS*scale, TS*scale);
+        }
+      }
+      // entities dots
+      const dot = (x,y,color)=>{
+        ctx.fillStyle=color;
+        ctx.fillRect(W-mw-10 + x*scale -2, 10 + y*scale -2, 4,4);
+      };
+      dot(player.onFoot?player.x:car.x, player.onFoot?player.y:car.y, '#fff47a');
+      dot(car.x,car.y,'#ff8a8a');
+      if (police.active) dot(police.x,police.y,'#8ec0ff');
+      npcs.forEach(n=>dot(n.x,n.y,'#e6f2ff'));
+      dot(mission.x, mission.y, '#ffd44d');
+      ctx.strokeStyle='#7aa2ff'; ctx.strokeRect(W-mw-10,10,mw,mh);
+    }
+  }
+
+  // --- Helpers (draw) ---
+  function getCSS(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#fff'; }
+  function drawCar(x,y,w,h,ang,color, isPolice=false){
+    ctx.save();
+    ctx.translate(x,y); ctx.rotate(ang);
+    ctx.fillStyle = color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
+    // body
+    roundRect(-w/2,-h/2,w,h,4,true,true);
+    // windows
+    ctx.fillStyle='rgba(230,244,255,.7)'; roundRect(-w/2+3,-h/2+3,w-6,h-6,3,true,false);
+    // police lights
+    if (isPolice){
+      ctx.fillStyle='rgba(255,0,0,.7)'; ctx.fillRect(-w/2+2,-h/2+2, w/2-3, 3);
+      ctx.fillStyle='rgba(0,120,255,.7)'; ctx.fillRect(0,-h/2+2, w/2-3, 3);
+    }
+    ctx.restore();
+  }
+  function roundRect(x,y,w,h,r,fill,stroke){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r);
+    if (fill) ctx.fill(); if (stroke) ctx.stroke();
+  }
+  function drawStar(cx,cy,spikes,outerR,innerR,color){
+    let rot=Math.PI/2*3, x=cx, y=cy, step=Math.PI/spikes;
+    ctx.save(); ctx.beginPath(); ctx.moveTo(cx,cy-outerR);
+    for(let i=0;i<spikes;i++){
+      x=cx+Math.cos(rot)*outerR; y=cy+Math.sin(rot)*outerR; ctx.lineTo(x,y); rot+=step;
+      x=cx+Math.cos(rot)*innerR; y=cy+Math.sin(rot)*innerR; ctx.lineTo(x,y); rot+=step;
+    }
+    ctx.lineTo(cx,cy-outerR); ctx.closePath(); ctx.fillStyle=color; ctx.fill(); ctx.restore();
+  }
+
+  // Start the loop
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
